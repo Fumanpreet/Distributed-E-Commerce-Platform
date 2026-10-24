@@ -13,7 +13,10 @@ import com.order_platform.e_commerce_core.exception.ResourceNotFoundException;
 import com.order_platform.e_commerce_core.client.inventory.InventoryClient;
 import com.order_platform.e_commerce_core.client.checkout.CheckoutClient;
 import com.order_platform.e_commerce_core.client.inventory.dto.InventoryResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -22,8 +25,12 @@ import java.util.Optional;
 import java.util.UUID;
 
 
+@Slf4j
 @Service
 public class CartService {
+
+    // Per-item cap used when INVENTORY can't be reached, so shoppers can still fill their cart
+    static final int FALLBACK_MAX_QUANTITY = 10;
 
     private final CartRepository cartRepository;
     private final CartMapper cartMapper;
@@ -79,19 +86,8 @@ public class CartService {
         Cart cart = cartMapper.toEntity(userId, cartDto);
         CartItem newItem = request.toEntity();
 
-        // TODO
-        // Here you have to make a soft check with INVENTORY SERVICE to see if quantity added in
-        // cart is more than available in INVENTORY if so round up to MAX AVAILABLE QUANTITY
-
-        InventoryResponse inventory = inventoryClient.getInventory(newItem.getProductId());
-
-        if (inventory == null) {
-            // 1. Log that the item does not exist
-            System.out.println("Warning: Product " + newItem.getProductId() + " does not exist in inventory catalog (Possibly Connection Error). Creating dummy inventory.");
-
-            // 2. Create dummy inventory where available items == required items
-            inventory = InventoryResponse.dummyOf(newItem.getProductId(), newItem.getQuantity());
-        }
+        // Soft check with INVENTORY SERVICE: quantity in cart is rounded down to what's available
+        InventoryResponse inventory = softCheckInventory(newItem.getProductId());
 
 
         //  Look if product exists already in user's cart
@@ -123,6 +119,20 @@ public class CartService {
         return CartResponseDto.fromEntity(updatedCart);
     }
 
+    // INVENTORY down, unreachable or returning no body -> allow up to FALLBACK_MAX_QUANTITY instead of failing.
+    // The real stock check still happens at checkout, when inventory-service reserves the order.
+    private InventoryResponse softCheckInventory(String productId) {
+        try {
+            InventoryResponse inventory = inventoryClient.getInventory(productId);
+            if (inventory != null)
+                return inventory;
+            log.warn("Inventory returned no data for product {}; allowing up to {} items", productId, FALLBACK_MAX_QUANTITY);
+        } catch (ResourceAccessException | HttpServerErrorException ex) {
+            log.warn("Inventory service unavailable for product {} ({}); allowing up to {} items",
+                    productId, ex.getMessage(), FALLBACK_MAX_QUANTITY);
+        }
+        return InventoryResponse.dummyOf(productId, FALLBACK_MAX_QUANTITY);
+    }
 
 
 
