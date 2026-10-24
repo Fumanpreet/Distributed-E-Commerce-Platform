@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { Toaster } from 'sonner'
@@ -106,7 +106,8 @@ describe('CartPage', () => {
     expect(
       await screen.findByText('Your session expired. Please sign in again.'),
     ).toBeInTheDocument()
-    await new Promise((r) => setTimeout(r, 200))
+    // Let in-flight requests settle so a second 401 would have shown a second toast
+    await waitFor(() => expect(queryClient.isFetching() + queryClient.isMutating()).toBe(0))
     expect(screen.getAllByText('Your session expired. Please sign in again.')).toHaveLength(1)
     expect(visited.filter((v) => v.startsWith('/login'))).toHaveLength(1)
   })
