@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Cart Checkout</title>
+
+    <style>
+
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 700px;
+            margin: 60px auto;
+            padding: 20px;
+        }
+
+        button {
+            padding: 12px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        #status {
+            margin-top: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+
+        #events {
+            margin-top: 20px;
+            font-family: monospace;
+        }
+
+    </style>
+</head>
+
+<body>
+
+
+<h1>Shopping Cart</h1>
+
+
+<button onclick="checkout()">
+    Checkout
+</button>
+
+
+<div id="status">
+
+    Waiting for checkout...
+
+</div>
+
+
+<h3>Order events</h3>
+
+<div id="events"></div>
+
+
+<script>
+
+    let eventSource = null;
+
+
+    async function checkout() {
+
+        const statusElement =
+            document.getElementById("status");
+
+        statusElement.innerText =
+            "Creating checkout...";
+
+
+        try {
+
+            const response = await fetch(
+                "/cart/checkout",
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+
+                    body: JSON.stringify({
+
+                        /*
+                           Change this according
+                           to your actual API
+                        */
+
+                        userId: "user-123"
+
+                    })
+                }
+            );
+
+
+            if (!response.ok) {
+
+                throw new Error(
+                    "Checkout failed: " +
+                    response.status
+                );
+            }
+
+
+            const checkoutResponse =
+                await response.json();
+
+
+            console.log(
+                "Checkout response:",
+                checkoutResponse
+            );
+
+
+            statusElement.innerText =
+                checkoutResponse.status;
+
+
+            addEvent(
+                "Checkout created: " +
+                checkoutResponse.orderId
+            );
+
+
+            /*
+             * Now start listening for
+             * asynchronous updates.
+             */
+
+            connectToOrderEvents(
+                checkoutResponse.orderId
+            );
+
+
+        } catch (error) {
+
+            console.error(error);
+
+            statusElement.innerText =
+                "Checkout failed";
+
+        }
+    }
+
+
+
+    function connectToOrderEvents(orderId) {
+
+        if (eventSource) {
+            eventSource.close();
+        }
+
+
+        const url =
+            `/api/cart/orders/${orderId}/events`;
+
+
+        eventSource =
+            new EventSource(url);
+
+
+        /*
+         * Connection established
+         */
+        eventSource.addEventListener(
+            "connected",
+            function(event) {
+
+                console.log(
+                    "SSE connected:",
+                    event.data
+                );
+
+                addEvent(
+                    "Connected to order updates"
+                );
+            }
+        );
+
+
+        /*
+         * Order status update
+         */
+        eventSource.addEventListener(
+            "order-status",
+            function(event) {
+
+                const update =
+                    JSON.parse(event.data);
+
+
+                console.log(
+                    "Order update:",
+                    update
+                );
+
+
+                document
+                    .getElementById("status")
+                    .innerText =
+                    update.status;
+
+
+                addEvent(
+                    update.status +
+                    " : " +
+                    update.message
+                );
+
+
+                /*
+                 * Terminal states
+                 */
+                if (
+                    update.status ===
+                    "ORDER_CONFIRMED"
+                    ||
+                    update.status ===
+                    "OUT_OF_STOCK"
+                    ||
+                    update.status ===
+                    "ORDER_FAILED"
+                ) {
+
+                    console.log(
+                        "Order processing finished."
+                    );
+
+
+                    eventSource.close();
+
+                    eventSource = null;
+                }
+
+            }
+        );
+
+
+        /*
+         * EventSource automatically
+         * attempts reconnection.
+         */
+        eventSource.onerror =
+            function(error) {
+
+                console.log(
+                    "SSE connection lost.",
+                    error
+                );
+
+                addEvent(
+                    "Connection interrupted. Reconnecting..."
+                );
+
+            };
+
+    }
+
+
+
+    function addEvent(message) {
+
+        const events =
+            document.getElementById("events");
+
+
+        const event =
+            document.createElement("div");
+
+
+        event.innerText =
+            new Date().toLocaleTimeString()
+            +
+            " - "
+            +
+            message;
+
+
+        events.prepend(event);
+    }
+
+</script>
+
+
+</body>
+
+</html>
