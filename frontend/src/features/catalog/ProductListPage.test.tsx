@@ -43,12 +43,15 @@ describe('ProductListPage', () => {
     await screen.findByText('Blue denim jacket')
 
     await userEvent.type(box(), 'lap')
-    await new Promise((r) => setTimeout(r, 500))
 
-    expect(searchCalls).toEqual([])
     expect(box()).toHaveValue('lap')
     expect(screen.getByText('Blue denim jacket')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Products' })).toBeInTheDocument()
+
+    // Enter sends the first search; exactly one call proves typing sent none
+    await userEvent.type(box(), '{Enter}')
+    await screen.findByRole('heading', { name: 'Results for “lap”' })
+    expect(searchCalls).toEqual(['lap'])
   })
 
   it('searches once on Enter', async () => {
@@ -86,10 +89,13 @@ describe('ProductListPage', () => {
     await userEvent.clear(box())
     await screen.findByRole('heading', { name: 'Products' })
     await userEvent.type(box(), '   {Enter}')
-    await new Promise((r) => setTimeout(r, 100))
-
-    expect(searchCalls).toEqual(['shirt'])
     expect(screen.getByRole('heading', { name: 'Products' })).toBeInTheDocument()
+
+    // A real search afterwards; seeing only it proves the empty Enter sent nothing
+    await userEvent.clear(box())
+    await userEvent.type(box(), 'jacket{Enter}')
+    await screen.findByRole('heading', { name: 'Results for “jacket”' })
+    expect(searchCalls).toEqual(['shirt', 'jacket'])
   })
 
   it('shows all products again when the box is cleared after a search', async () => {
