@@ -1,0 +1,20 @@
+# Secrets: never commit credentials
+*.csv
+.env
+.env.*
+!.env.development
+!.env.example
+
+# Build output
+target/
+node_modules/
+dist/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.log
+
+# Testing harness logs
+.verify/
